@@ -1,0 +1,2 @@
+clickhouse-connect==0.7.19
+pyarrow==16.1.0

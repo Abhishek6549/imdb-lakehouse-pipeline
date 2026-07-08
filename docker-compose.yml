@@ -1,0 +1,87 @@
+version: "3.8"
+
+# IMDb Lakehouse -> OLAP pipeline
+#   spark-master / spark-worker : PySpark cluster that cleans raw IMDb TSVs
+#                                  and writes partitioned Snappy Parquet to
+#                                  the shared ./data/lake volume ("the Lake").
+#   clickhouse                  : OLAP engine that the lake is loaded into
+#                                  for sub-second analytics.
+#   loader                      : throwaway python container with the deps
+#                                  needed to run load_to_olap.py / benchmark.py
+#                                  against both Spark and ClickHouse.
+
+x-spark-common: &spark-common
+  image: bitnami/spark:3.5.1
+  networks: [imdb-net]
+  volumes:
+    - ./scripts:/opt/scripts
+    - ./data:/opt/data
+
+services:
+  spark-master:
+    <<: *spark-common
+    container_name: imdb-spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8080:8080"   # Spark master web UI
+      - "7077:7077"   # Spark master RPC
+
+  spark-worker:
+    <<: *spark-common
+    container_name: imdb-spark-worker
+    depends_on: [spark-master]
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8081:8081"   # Spark worker web UI
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: imdb-clickhouse
+    networks: [imdb-net]
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # native TCP interface
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./data/lake:/var/lib/clickhouse/user_files/lake:ro
+      - ./sql:/docker-entrypoint-initdb.d:ro
+
+  loader:
+    build: ./docker/loader
+    container_name: imdb-loader
+    networks: [imdb-net]
+    depends_on: [clickhouse]
+    volumes:
+      - ./scripts:/opt/scripts
+      - ./sql:/opt/sql
+      - ./data:/opt/data
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - LAKE_PATH=/opt/data/lake
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    command: ["sleep", "infinity"]
+
+networks:
+  imdb-net:
+    driver: bridge
+
+volumes:
+  clickhouse-data:

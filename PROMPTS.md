@@ -1,0 +1,79 @@
+# PROMPTS.md
+
+LLM used: **Claude (Sonnet 5)**, via the Claude Code CLI.
+
+This document logs the actual prompts exchanged while building this
+pipeline, in order. All generated code was reviewed and can be explained
+line by line (see inline comments and the README's architecture/DDL
+sections for the reasoning behind each choice).
+
+---
+
+## Prompt 1 (initial challenge brief)
+
+> Challenge: IMDb Lakehouse to OLAP Pipeline
+> On a daily basis, Teleparty users are generating large amounts of data
+> daily. We receive a variety of event driven data from our users. The data
+> gives us viewership insights into the type of shows our users are
+> watching and the length of time spent in a watch party.
+> The purpose of this exercise is to understand how you as a data engineer
+> would go about ingesting a small subset of data, creating an appropriate
+> database schema for this data and preparing corresponding data queries to
+> answer a variety of questions about incoming data.
+>
+> Objective: Build a local data pipeline that downloads the 2GB IMDb
+> dataset from Kaggle, extracts movie titles/ratings/episodes, processes it
+> with PySpark, saves it as partitioned Parquet ("the Lake"), and
+> ingests/mounts it into an OLAP engine for high-speed analytics.
+>
+> Requirements: Docker Compose for a Spark Master/Worker cluster and the
+> OLAP engine; a PySpark ETL that cleans titles/ratings/episodes and
+> exports Snappy Parquet with a sensible time-series or category-based
+> partitioning strategy; loading the Parquet into the OLAP engine; an
+> analytics layer demonstrating the OLAP engine is significantly faster
+> than raw Spark.
+>
+> Deliverables: docker-compose.yml, etl_job.py, load_to_olap.py, DDL files
+> for the OLAP schema (with indexes/primary keys), a README performance
+> note explaining the OLAP choice, and this PROMPTS.md file.
+>
+> ... this is a requirement, where i need to build complete pipeline
+> according to these requirements and everything, so help me with it and
+> also it should be working
+
+## Prompt 2 (environment check, by the assistant, answered by the user)
+
+The assistant checked the local sandbox and found: no Docker installed,
+but PySpark 4.0.1 + Java 25 available locally, and working network access
+to IMDb's official dataset files (the same underlying data the Kaggle
+mirror repackages, no login required). It asked the user two clarifying
+questions:
+
+1. **Build strategy** — given no Docker in the sandbox, whether to (a)
+   write the full repo and also test the PySpark/OLAP logic locally
+   outside Docker, (b) write the code only with no local execution, or (c)
+   pause and wait for Docker to be installed.
+   **User answer:** write code only, no local execution.
+
+2. **OLAP engine choice** — DuckDB (embeddable, fully testable in the
+   sandbox without Docker) vs. ClickHouse (server-based, more aligned with
+   a "hundreds of millions of rows" production OLAP use case, but could
+   not be executed/tested in this sandbox without Docker).
+   **User answer:** ClickHouse.
+
+## Design decisions made while implementing (not separate user prompts, but explicit reasoning worth recording)
+
+- Used IMDb's own `datasets.imdbws.com` files as the default download
+  source (no login) alongside a `--source kaggle` option, so the repo is
+  runnable out of the box while still satisfying the Kaggle-based
+  requirement for anyone with an API token.
+- Partitioned `titles` by `(title_type, decade)` and `episodes` by
+  `decade` — category-based and time-series partitioning as required —
+  and mirrored the same columns as ClickHouse's `PARTITION BY` so pruning
+  applies at both the Parquet and ClickHouse layers.
+- Added ClickHouse skip indexes (bloom filter on `genres`, minmax on
+  `average_rating`/`num_votes`) and a pre-aggregated `genre_decade_stats`
+  rollup table to keep dashboard-style aggregate queries sub-second.
+- `benchmark.py` runs the identical aggregation query against raw Spark
+  (reading Parquet directly) and against ClickHouse, to directly satisfy
+  the "demonstrate the OLAP engine is significantly faster" requirement.
