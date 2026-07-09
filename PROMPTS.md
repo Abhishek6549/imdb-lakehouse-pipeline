@@ -40,8 +40,7 @@ challenge brief (IMDb Lakehouse-to-OLAP Pipeline).
 > Don't stop at code that looks correct — actually stand up the Docker
 > Compose stack, download the real IMDb dataset, run the ETL job against
 > it, load the result into the OLAP engine, run every analytics query,
-> and run the benchmark. Fix whatever breaks in practice; a pipeline that
-> only works on paper doesn't satisfy the brief.
+> and run the benchmark. Fix whatever breaks in practice.
 
 ### Prompt 4 — Confirm the Kaggle download requirement is genuinely met
 
@@ -69,6 +68,4 @@ challenge brief (IMDb Lakehouse-to-OLAP Pipeline).
 > Rewrite `README.md` and `PROMPTS.md`. The README should be tight and
 > self-explanatory — a reviewer should be able to understand the project
 > and run it from the README alone, without wading through explanation
-> that belongs in commit history. `PROMPTS.md` should read as the prompts
-> an experienced engineer would give against the stated requirements, not
-> a transcript of every back-and-forth exchange along the way.
+> that belongs in commit history.
