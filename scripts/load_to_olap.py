@@ -41,6 +41,16 @@ EPISODES_COLUMNS = [
     "num_votes",
 ]
 
+BOOL_COLUMNS = ("is_adult", "has_rating")
+
+# columns that are 0 = "unknown" sentinels rather than Nullable, because
+# they're part of ClickHouse's PARTITION BY / ORDER BY (see sql/ddl_clickhouse.sql)
+SENTINEL_COLUMNS = (
+    ("decade", "uint16"),
+    ("season_number", "uint32"),
+    ("episode_number", "uint32"),
+)
+
 
 def get_client():
     return clickhouse_connect.get_client(
@@ -48,16 +58,30 @@ def get_client():
     )
 
 
+def split_sql_statements(ddl_text):
+    stripped = "\n".join(line.split("--", 1)[0] for line in ddl_text.splitlines())
+    return [statement.strip() for statement in stripped.split(";") if statement.strip()]
+
+
+def cast_bool_columns(table):
+    for col in BOOL_COLUMNS:
+        if col in table.column_names:
+            table = table.set_column(table.column_names.index(col), col, table.column(col).cast("uint8"))
+    return table
+
+
+def fill_sentinel_columns(table):
+    for col, arrow_type in SENTINEL_COLUMNS:
+        if col in table.column_names:
+            filled = pc.fill_null(table.column(col), 0).cast(arrow_type)
+            table = table.set_column(table.column_names.index(col), col, filled)
+    return table
+
+
 def apply_ddl(client):
     with open(DDL_PATH) as f:
-        raw_lines = f.readlines()
-
-    stripped_lines = [line.split("--", 1)[0] for line in raw_lines]
-    ddl = "\n".join(stripped_lines)
-    for statement in ddl.split(";"):
-        statement = statement.strip()
-        if not statement:
-            continue
+        ddl_text = f.read()
+    for statement in split_sql_statements(ddl_text):
         client.command(statement)
     print("DDL applied.")
 
@@ -69,26 +93,9 @@ def load_table(client, table_fqn, lake_subdir, columns):
     total_rows = 0
     start = time.time()
     for fragment in dataset.get_fragments():
-
         table = fragment.to_table(schema=dataset.schema)
-
-        for bool_col in ("is_adult", "has_rating"):
-            if bool_col in table.column_names:
-                table = table.set_column(
-                    table.column_names.index(bool_col),
-                    bool_col,
-                    table.column(bool_col).cast("uint8"),
-                )
-
-        for sentinel_col, arrow_type in (
-            ("decade", "uint16"),
-            ("season_number", "uint32"),
-            ("episode_number", "uint32"),
-        ):
-            if sentinel_col in table.column_names:
-                filled = pc.fill_null(table.column(sentinel_col), 0).cast(arrow_type)
-                table = table.set_column(table.column_names.index(sentinel_col), sentinel_col, filled)
-
+        table = cast_bool_columns(table)
+        table = fill_sentinel_columns(table)
         table = table.select([c for c in columns if c in table.column_names])
         client.insert_arrow(table_fqn, table)
         total_rows += table.num_rows

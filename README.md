@@ -60,6 +60,17 @@ Spark UI: http://localhost:8080 · ClickHouse HTTP: http://localhost:8123
 On a full run (~12.6M titles, ~9.8M episodes), step 7 measures ClickHouse
 at **25–30x faster** than raw Spark on the same aggregate query.
 
+## Tests
+
+Unit tests cover the ETL transform logic (`etl_job.py`) and the pure
+loader helpers (`load_to_olap.py`) — no Docker or ClickHouse required, just
+a local Spark session. Run on the host:
+
+```bash
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
 ## Why ClickHouse
 
 - **Built for OLAP, not ETL.** Spark's per-query cost includes driver/executor
@@ -116,6 +127,7 @@ scripts/
 sql/
   ddl_clickhouse.sql      Table DDL (engine, partitioning, indexes)
   analytics_queries.sql   Sample analytics queries
-requirements.txt         For running scripts on the host, without Docker
+tests/                    Unit tests for etl_job.py and load_to_olap.py
+requirements.txt         For running scripts and tests on the host
 PROMPTS.md               LLM usage log
 ```

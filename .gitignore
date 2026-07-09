@@ -8,6 +8,7 @@ __pycache__/
 .DS_Store
 .venv/
 *.egg-info/
+.pytest_cache/
 
 .kaggle/
 kaggle.json
