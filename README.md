@@ -21,7 +21,10 @@ Kaggle / IMDb TSVs  --->  Spark cluster (docker)  --->  Parquet lake (Snappy, pa
 
 The Kaggle dataset ([ashirwadsangwan/imdb-dataset](https://www.kaggle.com/datasets/ashirwadsangwan/imdb-dataset))
 is a repackaging of IMDb's own [non-commercial datasets](https://developer.imdb.com/non-commercial-datasets/).
-This pipeline extracts the three files relevant to titles/ratings/episodes:
+It ships `name.basics`, `title.akas`, `title.basics`, `title.principals`, and
+`title.ratings` — notably **not** `title.episode`, so episode data is always
+pulled from IMDb directly regardless of which `--source` you use. This
+pipeline needs three files in the end:
 
 - `title.basics.tsv.gz` — titles, type, name, year, runtime, genres
 - `title.ratings.tsv.gz` — average rating + vote count per title
@@ -30,10 +33,14 @@ This pipeline extracts the three files relevant to titles/ratings/episodes:
 `scripts/download_data.sh` supports either source:
 
 ```bash
-# Requires a Kaggle account + API token (~/.kaggle/kaggle.json, see .env.example)
+# Downloads the real ~1.8GB Kaggle dataset via Kaggle's own dataset-download
+# API — works anonymously for this public dataset, no token needed. Falls
+# back to the `kaggle` CLI (needs ~/.kaggle/kaggle.json, see .env.example)
+# if that endpoint ever requires auth. Missing title.episode is fetched
+# from IMDb directly since Kaggle's mirror doesn't include it.
 ./scripts/download_data.sh --source kaggle
 
-# No login required — pulls the same underlying IMDb data directly
+# No login required at all — pulls the same underlying IMDb data directly
 ./scripts/download_data.sh --source imdb
 ```
 

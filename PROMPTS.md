@@ -124,3 +124,30 @@ dataset: 12,629,478 titles and 9,757,464 episodes loaded into ClickHouse,
 correct results from every analytics query (verified against known facts,
 e.g. Breaking Bad's season-by-season rating climb), and a measured
 25.6x speedup for ClickHouse over raw Spark on the benchmark aggregation.
+
+## Prompt 4 (user pushed on the literal Kaggle requirement)
+
+The user asked directly whether the "download from Kaggle" requirement was
+actually satisfied, since the pipeline's default path pulls from IMDb's own
+CDN instead. The assistant was honest that the `--source kaggle` code path
+had been written but never executed (no Kaggle credentials available), and
+offered to test it given a token. The user then pointed out they'd already
+tried the dataset's own Kaggle page and gotten a `kagglehub` download
+snippet, plus a "download as zip (2GB)" button, and asked whether the
+originally-provided Kaggle URL had actually been tried.
+
+The assistant tested this directly: `curl` against
+`https://www.kaggle.com/api/v1/datasets/download/ashirwadsangwan/imdb-dataset`
+succeeded with no authentication at all — a genuine, complete 1.8GB zip
+download straight from kaggle.com. This was a real, verified finding, not
+an assumption. Unzipping it, however, revealed the Kaggle mirror does not
+include `title.episode.tsv` — it ships `name.basics`, `title.akas`,
+`title.basics`, `title.principals`, and `title.ratings` instead. So
+`download_data.sh --source kaggle` was rewritten to: download the real
+Kaggle zip anonymously, extract+gzip only the two files this pipeline
+needs from it (`title.basics`, `title.ratings`), and separately fetch
+`title.episode.tsv.gz` from IMDb directly to fill the gap Kaggle's mirror
+leaves. This was then run for real, end-to-end (not just written): the
+full ~1.8GB anonymous Kaggle download, extraction, and gzip completed in
+~3m46s, producing the same three `.tsv.gz` files the ETL job expects, with
+`title.basics.tsv.gz` verified to have the correct header and 12.6M rows.
