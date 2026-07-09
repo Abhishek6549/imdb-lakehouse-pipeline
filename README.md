@@ -47,6 +47,9 @@ pipeline needs three files in the end:
 ## Running it end-to-end
 
 ```bash
+# 0. Set a ClickHouse password (read by docker-compose.yml via .env)
+cp .env.example .env && $EDITOR .env
+
 # 1. Start the Spark cluster and ClickHouse
 docker compose build spark-master spark-worker loader
 docker compose up -d spark-master spark-worker clickhouse loader
@@ -70,7 +73,7 @@ docker compose exec clickhouse clickhouse-client --database imdb --multiquery \
 docker compose exec spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 /opt/scripts/benchmark.py \
   --lake-dir /opt/data/lake --clickhouse-host clickhouse \
-  --clickhouse-user default --clickhouse-password imdb_pipeline
+  --clickhouse-user default --clickhouse-password "$(grep CLICKHOUSE_PASSWORD .env | cut -d= -f2)"
 ```
 
 Spark master UI: http://localhost:8080 · ClickHouse HTTP: http://localhost:8123
@@ -132,15 +135,17 @@ See [`sql/ddl_clickhouse.sql`](sql/ddl_clickhouse.sql):
 ## Repo layout
 
 ```
-docker-compose.yml          Spark cluster + ClickHouse + loader
+docker-compose.yml        Spark cluster + ClickHouse + loader
+docker/spark/              Dockerfile adding clickhouse-connect to apache/spark
 docker/loader/              Dockerfile + deps for the loader container
 scripts/
-  download_data.sh          Kaggle or direct-from-IMDb download
-  etl_job.py                PySpark transform -> partitioned Parquet lake
-  load_to_olap.py           Parquet lake -> ClickHouse
-  benchmark.py               Spark vs. ClickHouse timing comparison
+  download_data.sh        Kaggle or direct-from-IMDb download
+  etl_job.py               PySpark transform -> partitioned Parquet lake
+  load_to_olap.py          Parquet lake -> ClickHouse
+  benchmark.py             Spark vs. ClickHouse timing comparison
 sql/
-  ddl_clickhouse.sql         Table DDL (engine, partitioning, indexes)
-  analytics_queries.sql      Sample analytics queries
-PROMPTS.md                   LLM usage log for this challenge
+  ddl_clickhouse.sql       Table DDL (engine, partitioning, indexes)
+  analytics_queries.sql    Sample analytics queries
+requirements.txt           For running scripts on the host without Docker
+PROMPTS.md                 LLM usage log for this challenge
 ```

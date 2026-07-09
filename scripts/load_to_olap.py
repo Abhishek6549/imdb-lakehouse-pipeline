@@ -100,14 +100,10 @@ def load_table(client, table_fqn, lake_subdir, columns):
                     bool_col,
                     table.column(bool_col).cast("uint8"),
                 )
-        # decade is a hive partition column; Spark writes null start_year
-        # rows under a "__HIVE_DEFAULT_PARTITION__" bucket, which pyarrow
-        # reads back as a null decade. ClickHouse's `decade` column is
-        # non-nullable (it's part of PARTITION BY / ORDER BY, which forbid
-        # Nullable columns), so fold missing decades to the 0 = "unknown" sentinel.
-        # same story for episodes' season/episode numbers: they're part of
-        # the ORDER BY sorting key, which also forbids Nullable columns.
-        # season/episode use uint32 (some long-running shows exceed uint16).
+        # decade/season_number/episode_number are part of ClickHouse's
+        # PARTITION BY / ORDER BY, which forbid Nullable columns; fold
+        # missing values (e.g. Spark's "__HIVE_DEFAULT_PARTITION__" bucket
+        # for null decades) to the 0 = "unknown" sentinel used in the DDL.
         for sentinel_col, arrow_type in (
             ("decade", "uint16"),
             ("season_number", "uint32"),

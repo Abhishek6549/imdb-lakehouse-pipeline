@@ -67,7 +67,7 @@ services:
       # access unless these are set, which would otherwise block the
       # `loader` container's cross-container HTTP connections.
       - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=imdb_pipeline
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env, see .env.example}
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./data/lake:/var/lib/clickhouse/user_files/lake
@@ -86,7 +86,7 @@ services:
       - CLICKHOUSE_HOST=clickhouse
       - CLICKHOUSE_PORT=8123
       - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=imdb_pipeline
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env, see .env.example}
       - LAKE_PATH=/opt/data/lake
       - SPARK_MASTER_URL=spark://spark-master:7077
     command: ["sleep", "infinity"]
