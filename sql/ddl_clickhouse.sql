@@ -1,13 +1,3 @@
--- ddl_clickhouse.sql
--- Schema for the OLAP layer. Mirrors the partitioning strategy used when
--- writing the Parquet lake (title_type + decade) so ClickHouse's own
--- partition pruning lines up with how the data was already organized
--- upstream by Spark.
---
--- Auto-applied on first container start via docker-entrypoint-initdb.d
--- (see docker-compose.yml), or run manually with:
---   docker compose exec clickhouse clickhouse-client --multiquery < sql/ddl_clickhouse.sql
-
 CREATE DATABASE IF NOT EXISTS imdb;
 
 CREATE TABLE IF NOT EXISTS imdb.titles
@@ -59,9 +49,7 @@ ORDER BY (parent_tconst, season_number, episode_number)
 PRIMARY KEY (parent_tconst, season_number, episode_number)
 SETTINGS index_granularity = 8192;
 
--- Pre-aggregated rollup used by dashboards that slice ratings by genre and
--- decade. Populated once after load via `INSERT INTO ... SELECT` (see
--- load_to_olap.py) rather than kept live, since the lake is batch-refreshed.
+
 CREATE TABLE IF NOT EXISTS imdb.genre_decade_stats
 (
     genre          LowCardinality(String),

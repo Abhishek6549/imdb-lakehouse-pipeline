@@ -1,28 +1,4 @@
 #!/usr/bin/env bash
-#
-# download_data.sh — fetch the raw IMDb title/rating/episode data into data/raw/
-#
-# The Kaggle dataset (ashirwadsangwan/imdb-dataset, the ~2GB dataset named in
-# the challenge brief) is a repackaging of IMDb's own public "non-commercial
-# datasets" (https://developer.imdb.com/non-commercial-datasets/). It ships
-# name.basics / title.akas / title.basics / title.principals / title.ratings
-# — notably it does NOT include title.episode.tsv, so episode data is always
-# pulled from IMDb directly regardless of --source.
-#
-#   --source kaggle   downloads the real ~1.8GB Kaggle zip via Kaggle's own
-#                      dataset-download API endpoint (kaggle.com/api/v1/...).
-#                      This works anonymously for this public dataset (no
-#                      token needed); if Kaggle ever locks that endpoint down,
-#                      it falls back to the `kaggle` CLI, which does need
-#                      ~/.kaggle/kaggle.json or KAGGLE_USERNAME/KAGGLE_KEY.
-#   --source imdb     (default) pulls all three files this pipeline needs
-#                      directly from IMDb's own CDN. No login required,
-#                      identical schema/content, and is what lets this repo
-#                      be cloned and run end-to-end with zero credentials.
-#
-# Usage:
-#   ./scripts/download_data.sh                 # IMDb direct download (default)
-#   ./scripts/download_data.sh --source kaggle  # real Kaggle dataset download
 
 set -euo pipefail
 
@@ -47,8 +23,6 @@ done
 mkdir -p "$RAW_DIR"
 
 download_episode_file_from_imdb() {
-  # Kaggle's mirror doesn't ship title.episode.tsv, so this always runs,
-  # regardless of --source, to fill that gap.
   if [[ -f "${RAW_DIR}/title.episode.tsv.gz" ]]; then
     return
   fi

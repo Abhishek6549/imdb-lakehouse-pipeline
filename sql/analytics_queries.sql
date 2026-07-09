@@ -1,8 +1,3 @@
--- analytics_queries.sql
--- Sample analytics layer queries against the ClickHouse OLAP tables.
--- Run with:
---   docker compose exec clickhouse clickhouse-client --database imdb --multiquery < sql/analytics_queries.sql
-
 -- 1. Top 10 highest-rated movies of each decade (min 1000 votes)
 --    category (title_type) + time-series (decade) partition pruning both apply.
 SELECT decade, primary_title, average_rating, num_votes

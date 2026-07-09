@@ -1,18 +1,3 @@
-# IMDb Lakehouse -> OLAP pipeline
-#   spark-master / spark-worker : PySpark cluster that cleans raw IMDb TSVs
-#                                  and writes partitioned Snappy Parquet to
-#                                  the shared ./data/lake volume ("the Lake").
-#   clickhouse                  : OLAP engine that the lake is loaded into
-#                                  for sub-second analytics.
-#   loader                      : throwaway python container with the deps
-#                                  needed to run load_to_olap.py / benchmark.py
-#                                  against both Spark and ClickHouse.
-#
-# Uses the official apache/spark image (bitnami/spark's versioned tags now
-# require a paid subscription; apache/spark is the upstream-maintained
-# replacement). It has no built-in master/worker launcher, so each service
-# runs spark-class directly in the foreground.
-
 x-spark-common: &spark-common
   build: ./docker/spark
   image: imdb-spark:4.0.3-python3
@@ -63,9 +48,6 @@ services:
       - "8123:8123"   # HTTP interface
       - "9001:9000"   # native TCP interface (9000 remapped: often taken on macOS)
     environment:
-      # the official image restricts the `default` user to loopback-only
-      # access unless these are set, which would otherwise block the
-      # `loader` container's cross-container HTTP connections.
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env, see .env.example}
     volumes:

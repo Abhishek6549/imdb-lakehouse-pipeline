@@ -1,23 +1,3 @@
-"""
-benchmark.py — proves the "OLAP engine is significantly faster than raw
-Spark" requirement by running the same aggregation query two ways:
-
-  1. Raw PySpark reading directly from the Parquet lake, cluster
-     coordination overhead included — this is exactly how an analyst
-     would query the lake without an OLAP layer.
-  2. ClickHouse, querying the already-loaded imdb.titles table.
-
-Both compute average rating and title count per (title_type, decade).
-
-Run via spark-submit from the spark-master container, for a fair
-same-process comparison against ClickHouse:
-
-    docker compose exec spark-master /opt/spark/bin/spark-submit \
-        --master spark://spark-master:7077 /opt/scripts/benchmark.py \
-        --lake-dir /opt/data/lake --clickhouse-host clickhouse \
-        --clickhouse-user default --clickhouse-password "$CLICKHOUSE_PASSWORD"
-"""
-
 import argparse
 import os
 import time

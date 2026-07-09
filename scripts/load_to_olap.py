@@ -1,19 +1,3 @@
-"""
-load_to_olap.py — loads the partitioned Parquet lake into ClickHouse.
-
-Applies the DDL in sql/ddl_clickhouse.sql (idempotent, CREATE ... IF NOT
-EXISTS), then streams each Parquet file under data/lake/{titles,episodes}
-into the matching ClickHouse table using Arrow (no intermediate CSV, no
-pandas copy), and finally materializes the genre_decade_stats rollup with a
-single INSERT INTO ... SELECT run inside ClickHouse itself.
-
-Run inside the `loader` container (has clickhouse-connect + pyarrow):
-    docker compose exec loader python /opt/scripts/load_to_olap.py
-
-Env vars (all have Docker Compose defaults):
-    CLICKHOUSE_HOST, CLICKHOUSE_PORT, LAKE_PATH
-"""
-
 import os
 import time
 
@@ -28,8 +12,6 @@ CLICKHOUSE_PORT = int(os.environ.get("CLICKHOUSE_PORT", "8123"))
 CLICKHOUSE_USER = os.environ.get("CLICKHOUSE_USER", "default")
 CLICKHOUSE_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
 
-# Rename Arrow/Parquet columns -> ClickHouse column names where they differ,
-# and cast booleans (Parquet) to UInt8 (ClickHouse) at insert time.
 TITLES_COLUMNS = [
     "tconst",
     "title_type",
@@ -69,9 +51,7 @@ def get_client():
 def apply_ddl(client):
     with open(DDL_PATH) as f:
         raw_lines = f.readlines()
-    # strip "-- ..." comments (whole-line or trailing) before splitting on
-    # ";" — a naive split would otherwise break on any semicolon that
-    # happens to appear inside a comment's text.
+
     stripped_lines = [line.split("--", 1)[0] for line in raw_lines]
     ddl = "\n".join(stripped_lines)
     for statement in ddl.split(";"):
@@ -89,10 +69,9 @@ def load_table(client, table_fqn, lake_subdir, columns):
     total_rows = 0
     start = time.time()
     for fragment in dataset.get_fragments():
-        # pass the full dataset schema so hive partition columns
-        # (title_type=/decade=/...) are materialized as real columns
+
         table = fragment.to_table(schema=dataset.schema)
-        # bool -> uint8 for ClickHouse's UInt8 columns
+
         for bool_col in ("is_adult", "has_rating"):
             if bool_col in table.column_names:
                 table = table.set_column(
@@ -100,10 +79,7 @@ def load_table(client, table_fqn, lake_subdir, columns):
                     bool_col,
                     table.column(bool_col).cast("uint8"),
                 )
-        # decade/season_number/episode_number are part of ClickHouse's
-        # PARTITION BY / ORDER BY, which forbid Nullable columns; fold
-        # missing values (e.g. Spark's "__HIVE_DEFAULT_PARTITION__" bucket
-        # for null decades) to the 0 = "unknown" sentinel used in the DDL.
+
         for sentinel_col, arrow_type in (
             ("decade", "uint16"),
             ("season_number", "uint32"),
@@ -112,7 +88,7 @@ def load_table(client, table_fqn, lake_subdir, columns):
             if sentinel_col in table.column_names:
                 filled = pc.fill_null(table.column(sentinel_col), 0).cast(arrow_type)
                 table = table.set_column(table.column_names.index(sentinel_col), sentinel_col, filled)
-        # keep only + order the columns the target table expects
+
         table = table.select([c for c in columns if c in table.column_names])
         client.insert_arrow(table_fqn, table)
         total_rows += table.num_rows

@@ -1,32 +1,3 @@
-"""
-etl_job.py — the PySpark transformation step of the IMDb lakehouse pipeline.
-
-Reads the raw IMDb TSV exports (title.basics, title.ratings, title.episode),
-cleans/casts/joins them, and writes two Snappy-compressed, partitioned Parquet
-datasets into the "lake":
-
-    data/lake/titles/title_type=<...>/decade=<...>/*.parquet
-    data/lake/episodes/decade=<...>/*.parquet
-
-Partitioning strategy:
-  - `titles` is partitioned by (title_type, decade). title_type gives
-    category-based pruning (movie / tvSeries / short / ... analytics rarely
-    mix types), and decade gives time-series pruning (trend-over-time
-    queries only need to scan the decades they ask about).
-  - `episodes` is partitioned by decade (derived from the parent series'
-    start_year) since almost every episode-level query is a time-series
-    question ("how did this show's ratings trend over the years").
-
-Run locally:
-    spark-submit scripts/etl_job.py \
-        --raw-dir data/raw --lake-dir data/lake
-
-Run against the dockerized cluster:
-    docker compose exec spark-master \
-        /opt/spark/bin/spark-submit --master spark://spark-master:7077 \
-        /opt/scripts/etl_job.py --raw-dir /opt/data/raw --lake-dir /opt/data/lake
-"""
-
 import argparse
 
 from pyspark.sql import SparkSession, functions as F, types as T
@@ -92,9 +63,6 @@ TITLE_EPISODE_SCHEMA = T.StructType(
 
 
 def try_cast_int(colname):
-    # a handful of raw IMDb rows have shifted/malformed columns (e.g. a
-    # genre string where runtimeMinutes should be); try_cast turns those
-    # into null instead of crashing the whole write with a NumberFormatException.
     return F.expr(f"try_cast({colname} as int)")
 
 
