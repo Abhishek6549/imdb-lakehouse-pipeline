@@ -77,3 +77,50 @@ questions:
 - `benchmark.py` runs the identical aggregation query against raw Spark
   (reading Parquet directly) and against ClickHouse, to directly satisfy
   the "demonstrate the OLAP engine is significantly faster" requirement.
+
+## Prompt 3 (user installed Docker; asked to actually run the pipeline end-to-end)
+
+Once Docker was available, the assistant ran `docker compose up` and the
+full pipeline against the real, full-size IMDb dataset (~11M titles, ~270MB
+compressed) rather than treating the written code as done. This surfaced
+several real bugs that only show up at runtime, all fixed in place:
+
+- `bitnami/spark:3.5.1` no longer exists on Docker Hub (Bitnami moved
+  versioned tags behind a paid subscription in 2025) — switched to the
+  official `apache/spark:4.0.3-python3` image, which has no built-in
+  master/worker launcher, so each service now runs `spark-class` directly.
+- Host port 9000 was already bound by another macOS process — remapped
+  ClickHouse's native TCP port to 9001 on the host.
+- Mounting `data/lake` as read-only broke ClickHouse's entrypoint, which
+  tries to `chown` every mounted path.
+- ClickHouse auto-runs every `.sql` file under `docker-entrypoint-initdb.d`
+  in alphabetical order; `analytics_queries.sql` (a < d) ran before
+  `ddl_clickhouse.sql` and failed against tables that didn't exist yet —
+  only the DDL file is mounted there now.
+- `decade` (and, for episodes, `season_number`/`episode_number`) were
+  `Nullable` columns used in `PARTITION BY`/`ORDER BY`, which ClickHouse
+  forbids by default — switched to non-nullable with `0` as an explicit
+  "unknown" sentinel, filled in by the loader via `pyarrow.compute.fill_null`.
+- Real IMDb rows have occasional malformed/shifted columns (e.g. a genre
+  string landing in the `runtimeMinutes` column), which crashed Spark's
+  strict `.cast()`; switched to `try_cast` so bad values become `null`
+  instead of aborting the whole write.
+- Some long-running shows have episode/season numbers above 65,535 —
+  widened those columns from `UInt16` to `UInt32`.
+- ClickHouse's official image restricts the `default` user to
+  loopback-only access unless `CLICKHOUSE_USER`/`CLICKHOUSE_PASSWORD` are
+  set, which silently blocked the `loader` container's HTTP connections —
+  added explicit credentials shared by both containers.
+- `load_to_olap.py`'s DDL statement splitter used a naive `str.split(";")`,
+  which broke on a semicolon that happened to appear inside an inline SQL
+  comment — now strips comment text before splitting.
+- `benchmark.py` needs `clickhouse-connect` inside the Spark container to
+  do an in-process timing comparison, but the base Spark image only ships
+  bare PySpark — added `docker/spark/Dockerfile` to layer that dependency
+  on top of `apache/spark:4.0.3-python3`.
+
+After these fixes, the full pipeline ran clean end-to-end against the real
+dataset: 12,629,478 titles and 9,757,464 episodes loaded into ClickHouse,
+correct results from every analytics query (verified against known facts,
+e.g. Breaking Bad's season-by-season rating climb), and a measured
+25.6x speedup for ClickHouse over raw Spark on the benchmark aggregation.

@@ -12,12 +12,14 @@ Both computes: average rating and title count per (title_type, decade).
 Run inside the loader container (has pyspark not required — uses
 spark-submit from the spark-master container for a fair comparison instead):
 
-    docker compose exec spark-master spark-submit \
+    docker compose exec spark-master /opt/spark/bin/spark-submit \
         --master spark://spark-master:7077 /opt/scripts/benchmark.py \
-        --lake-dir /opt/data/lake --clickhouse-host clickhouse
+        --lake-dir /opt/data/lake --clickhouse-host clickhouse \
+  --clickhouse-user default --clickhouse-password imdb_pipeline
 """
 
 import argparse
+import os
 import time
 
 import clickhouse_connect
@@ -29,6 +31,8 @@ def parse_args():
     parser.add_argument("--lake-dir", default="data/lake")
     parser.add_argument("--clickhouse-host", default="localhost")
     parser.add_argument("--clickhouse-port", type=int, default=8123)
+    parser.add_argument("--clickhouse-user", default=os.environ.get("CLICKHOUSE_USER", "default"))
+    parser.add_argument("--clickhouse-password", default=os.environ.get("CLICKHOUSE_PASSWORD", ""))
     parser.add_argument("--runs", type=int, default=3, help="number of timed runs to average")
     return parser.parse_args()
 
@@ -70,7 +74,12 @@ def main():
 
     spark = SparkSession.builder.appName("imdb-benchmark").getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
-    client = clickhouse_connect.get_client(host=args.clickhouse_host, port=args.clickhouse_port)
+    client = clickhouse_connect.get_client(
+        host=args.clickhouse_host,
+        port=args.clickhouse_port,
+        username=args.clickhouse_user,
+        password=args.clickhouse_password,
+    )
 
     spark_best, spark_avg = time_it(lambda: run_spark_query(spark, args.lake_dir), args.runs)
     ch_best, ch_avg = time_it(lambda: run_clickhouse_query(client), args.runs)

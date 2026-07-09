@@ -23,7 +23,7 @@ Run locally:
 
 Run against the dockerized cluster:
     docker compose exec spark-master \
-        spark-submit --master spark://spark-master:7077 \
+        /opt/spark/bin/spark-submit --master spark://spark-master:7077 \
         /opt/scripts/etl_job.py --raw-dir /opt/data/raw --lake-dir /opt/data/lake
 """
 
@@ -91,14 +91,21 @@ TITLE_EPISODE_SCHEMA = T.StructType(
 )
 
 
+def try_cast_int(colname):
+    # a handful of raw IMDb rows have shifted/malformed columns (e.g. a
+    # genre string where runtimeMinutes should be); try_cast turns those
+    # into null instead of crashing the whole write with a NumberFormatException.
+    return F.expr(f"try_cast({colname} as int)")
+
+
 def clean_basics(basics_df):
     return (
         basics_df.dropDuplicates(["tconst"])
         .filter(F.col("tconst").isNotNull() & F.col("primaryTitle").isNotNull())
         .withColumn("is_adult", (F.col("isAdult") == "1"))
-        .withColumn("start_year", F.col("startYear").cast(T.IntegerType()))
-        .withColumn("end_year", F.col("endYear").cast(T.IntegerType()))
-        .withColumn("runtime_minutes", F.col("runtimeMinutes").cast(T.IntegerType()))
+        .withColumn("start_year", try_cast_int("startYear"))
+        .withColumn("end_year", try_cast_int("endYear"))
+        .withColumn("runtime_minutes", try_cast_int("runtimeMinutes"))
         .withColumn(
             "genres",
             F.when(F.col("genres").isNotNull(), F.split(F.col("genres"), ","))
@@ -126,8 +133,8 @@ def clean_basics(basics_df):
 def clean_ratings(ratings_df):
     return (
         ratings_df.dropDuplicates(["tconst"])
-        .withColumn("average_rating", F.col("averageRating").cast(T.FloatType()))
-        .withColumn("num_votes", F.col("numVotes").cast(T.IntegerType()))
+        .withColumn("average_rating", F.expr("try_cast(averageRating as float)"))
+        .withColumn("num_votes", try_cast_int("numVotes"))
         .select("tconst", "average_rating", "num_votes")
     )
 
@@ -136,8 +143,8 @@ def clean_episodes(episodes_df):
     return (
         episodes_df.dropDuplicates(["tconst"])
         .filter(F.col("parentTconst").isNotNull())
-        .withColumn("season_number", F.col("seasonNumber").cast(T.IntegerType()))
-        .withColumn("episode_number", F.col("episodeNumber").cast(T.IntegerType()))
+        .withColumn("season_number", try_cast_int("seasonNumber"))
+        .withColumn("episode_number", try_cast_int("episodeNumber"))
         .select(
             F.col("tconst").alias("episode_tconst"),
             F.col("parentTconst").alias("parent_tconst"),

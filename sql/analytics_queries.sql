@@ -27,7 +27,7 @@ SELECT
     round(avg(average_rating), 2) AS avg_rating,
     count() AS title_count
 FROM imdb.titles
-WHERE has_rating = 1 AND decade IS NOT NULL
+WHERE has_rating = 1 AND decade != 0  -- 0 = unknown/missing start_year
 GROUP BY title_type, decade
 ORDER BY title_type, decade;
 

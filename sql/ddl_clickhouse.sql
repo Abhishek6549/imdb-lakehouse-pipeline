@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS imdb.titles
     end_year         Nullable(UInt16),
     runtime_minutes  Nullable(UInt32),
     genres           Array(String),
-    decade           Nullable(UInt16),
+    decade           UInt16, -- 0 = unknown/missing start_year (kept out of Nullable: used in PARTITION BY / ORDER BY)
     average_rating   Nullable(Float32),
     num_votes        Nullable(UInt32),
     has_rating       UInt8,
@@ -44,10 +44,10 @@ CREATE TABLE IF NOT EXISTS imdb.episodes
     parent_tconst     String,
     episode_title     Nullable(String),
     series_title      Nullable(String),
-    season_number     Nullable(UInt16),
-    episode_number    Nullable(UInt16),
+    season_number     UInt32, -- 0 = unknown; some long-running talk shows exceed UInt16 (part of the sorting key, so can't be Nullable)
+    episode_number    UInt32, -- 0 = unknown; same reasoning
     series_start_year Nullable(UInt16),
-    decade            Nullable(UInt16),
+    decade            UInt16, -- 0 = unknown (see imdb.titles)
     average_rating    Nullable(Float32),
     num_votes         Nullable(UInt32),
 
@@ -65,7 +65,7 @@ SETTINGS index_granularity = 8192;
 CREATE TABLE IF NOT EXISTS imdb.genre_decade_stats
 (
     genre          LowCardinality(String),
-    decade         Nullable(UInt16),
+    decade         UInt16,
     title_count    UInt64,
     avg_rating     Float32,
     total_votes    UInt64

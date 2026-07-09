@@ -14,17 +14,19 @@ Env vars (all have Docker Compose defaults):
     CLICKHOUSE_HOST, CLICKHOUSE_PORT, LAKE_PATH
 """
 
-import glob
 import os
 import time
 
 import clickhouse_connect
+import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
 LAKE_PATH = os.environ.get("LAKE_PATH", "data/lake")
 DDL_PATH = os.environ.get("DDL_PATH", "sql/ddl_clickhouse.sql")
 CLICKHOUSE_HOST = os.environ.get("CLICKHOUSE_HOST", "localhost")
 CLICKHOUSE_PORT = int(os.environ.get("CLICKHOUSE_PORT", "8123"))
+CLICKHOUSE_USER = os.environ.get("CLICKHOUSE_USER", "default")
+CLICKHOUSE_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
 
 # Rename Arrow/Parquet columns -> ClickHouse column names where they differ,
 # and cast booleans (Parquet) to UInt8 (ClickHouse) at insert time.
@@ -59,16 +61,19 @@ EPISODES_COLUMNS = [
 
 
 def get_client():
-    return clickhouse_connect.get_client(host=CLICKHOUSE_HOST, port=CLICKHOUSE_PORT)
+    return clickhouse_connect.get_client(
+        host=CLICKHOUSE_HOST, port=CLICKHOUSE_PORT, username=CLICKHOUSE_USER, password=CLICKHOUSE_PASSWORD
+    )
 
 
 def apply_ddl(client):
     with open(DDL_PATH) as f:
         raw_lines = f.readlines()
-    # drop full-line comments before splitting into statements, otherwise a
-    # leading "-- comment" line would make str.startswith("--") swallow the
-    # real statement that follows it in the same chunk.
-    ddl = "\n".join(line for line in raw_lines if not line.strip().startswith("--"))
+    # strip "-- ..." comments (whole-line or trailing) before splitting on
+    # ";" — a naive split would otherwise break on any semicolon that
+    # happens to appear inside a comment's text.
+    stripped_lines = [line.split("--", 1)[0] for line in raw_lines]
+    ddl = "\n".join(stripped_lines)
     for statement in ddl.split(";"):
         statement = statement.strip()
         if not statement:
@@ -95,6 +100,22 @@ def load_table(client, table_fqn, lake_subdir, columns):
                     bool_col,
                     table.column(bool_col).cast("uint8"),
                 )
+        # decade is a hive partition column; Spark writes null start_year
+        # rows under a "__HIVE_DEFAULT_PARTITION__" bucket, which pyarrow
+        # reads back as a null decade. ClickHouse's `decade` column is
+        # non-nullable (it's part of PARTITION BY / ORDER BY, which forbid
+        # Nullable columns), so fold missing decades to the 0 = "unknown" sentinel.
+        # same story for episodes' season/episode numbers: they're part of
+        # the ORDER BY sorting key, which also forbids Nullable columns.
+        # season/episode use uint32 (some long-running shows exceed uint16).
+        for sentinel_col, arrow_type in (
+            ("decade", "uint16"),
+            ("season_number", "uint32"),
+            ("episode_number", "uint32"),
+        ):
+            if sentinel_col in table.column_names:
+                filled = pc.fill_null(table.column(sentinel_col), 0).cast(arrow_type)
+                table = table.set_column(table.column_names.index(sentinel_col), sentinel_col, filled)
         # keep only + order the columns the target table expects
         table = table.select([c for c in columns if c in table.column_names])
         client.insert_arrow(table_fqn, table)

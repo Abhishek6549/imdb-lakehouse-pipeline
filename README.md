@@ -13,7 +13,7 @@ Kaggle / IMDb TSVs  --->  Spark cluster (docker)  --->  Parquet lake (Snappy, pa
 
 | Component      | Role                                                                 |
 |----------------|-----------------------------------------------------------------------|
-| `spark-master` / `spark-worker` | Bitnami Spark 3.5 cluster that runs `etl_job.py` to clean, join, and partition the raw IMDb TSVs into Parquet. |
+| `spark-master` / `spark-worker` | Apache Spark 4.0 cluster (official `apache/spark` image) that runs `etl_job.py` to clean, join, and partition the raw IMDb TSVs into Parquet. |
 | `clickhouse`   | OLAP engine. Serves all analytics queries against the loaded lake.    |
 | `loader`       | Throwaway Python container (clickhouse-connect + pyarrow) used to run `load_to_olap.py` / `benchmark.py`. |
 
@@ -41,14 +41,14 @@ This pipeline extracts the three files relevant to titles/ratings/episodes:
 
 ```bash
 # 1. Start the Spark cluster and ClickHouse
-docker compose up -d spark-master spark-worker clickhouse
-docker compose build loader && docker compose up -d loader
+docker compose build spark-master spark-worker loader
+docker compose up -d spark-master spark-worker clickhouse loader
 
 # 2. Get the raw data
 ./scripts/download_data.sh --source imdb
 
 # 3. Run the PySpark transformation (writes data/lake/titles, data/lake/episodes)
-docker compose exec spark-master spark-submit \
+docker compose exec spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   /opt/scripts/etl_job.py --raw-dir /opt/data/raw --lake-dir /opt/data/lake
 
@@ -60,9 +60,10 @@ docker compose exec clickhouse clickhouse-client --database imdb --multiquery \
   < sql/analytics_queries.sql
 
 # 6. Prove ClickHouse is faster than raw Spark on the same aggregation
-docker compose exec spark-master spark-submit \
+docker compose exec spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 /opt/scripts/benchmark.py \
-  --lake-dir /opt/data/lake --clickhouse-host clickhouse
+  --lake-dir /opt/data/lake --clickhouse-host clickhouse \
+  --clickhouse-user default --clickhouse-password imdb_pipeline
 ```
 
 Spark master UI: http://localhost:8080 · ClickHouse HTTP: http://localhost:8123
